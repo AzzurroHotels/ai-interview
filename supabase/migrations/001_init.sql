@@ -1,13 +1,10 @@
--- Enable UUID generation
-create extension if not exists "pgcrypto";
+-- Enable required extension
+create extension if not exists pgcrypto;
 
 -- =========================
--- INTERVIEWS TABLE
+-- Interviews table
 -- =========================
-drop table if exists public.interview_answers cascade;
-drop table if exists public.interviews cascade;
-
-create table public.interviews (
+create table if not exists public.interviews (
   id uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default now(),
 
@@ -23,17 +20,22 @@ create table public.interviews (
   user_agent text,
   device_hint text,
 
-  -- ✅ REQUIRED BY YOUR APP
-  visibility_hidden_count int not null default 0,
-  practice_records int not null default 0
+  -- IMPORTANT: this column was missing
+  practice_records int not null default 0,
+
+  visibility_hidden_count int not null default 0
 );
 
 -- =========================
--- INTERVIEW ANSWERS TABLE
+-- Interview answers table
 -- =========================
-create table public.interview_answers (
+create table if not exists public.interview_answers (
   id uuid primary key default gen_random_uuid(),
-  interview_id uuid not null references public.interviews(id) on delete cascade,
+  created_at timestamptz not null default now(),
+
+  interview_id uuid not null
+    references public.interviews(id)
+    on delete cascade,
 
   question_index int not null,
   question_text text not null,
@@ -41,44 +43,36 @@ create table public.interview_answers (
 
   storage_path text not null,
   duration_seconds int,
-  mime_type text,
-
-  created_at timestamptz not null default now()
+  mime_type text
 );
 
 -- =========================
--- INDEXES
--- =========================
-create index interview_answers_interview_id_idx
-  on public.interview_answers(interview_id);
-
--- =========================
--- ROW LEVEL SECURITY
+-- RLS
 -- =========================
 alter table public.interviews enable row level security;
 alter table public.interview_answers enable row level security;
 
--- Allow anonymous inserts (your public interview form)
-create policy "anon_insert_interviews"
+-- Allow anon inserts (public interview submission)
+create policy "anon can insert interviews"
 on public.interviews
 for insert
 to anon
 with check (true);
 
-create policy "anon_insert_answers"
+create policy "anon can insert interview answers"
 on public.interview_answers
 for insert
 to anon
 with check (true);
 
--- Allow anon read (used by edge functions)
-create policy "anon_select_interviews"
+-- Allow anon reads if needed (optional but helpful)
+create policy "anon can read interviews"
 on public.interviews
 for select
 to anon
 using (true);
 
-create policy "anon_select_answers"
+create policy "anon can read interview answers"
 on public.interview_answers
 for select
 to anon
