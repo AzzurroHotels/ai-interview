@@ -602,7 +602,28 @@ async function submitInterview() {
   interviewId = interview.id;
 
   try {
-    // 2) Upload each clip + insert answer row
+    // 2) Upload practice clip if it exists
+    if (practiceClip) {
+      const ext = practiceClip.mimeType.includes("mp4") ? "mp4" : "webm";
+      const practicePath = `interviews/${interviewId}/practice.${ext}`;
+
+      els.uploadStatus.textContent = "Uploading practice recording…";
+
+      const { error: practiceUpErr } = await supabase.storage
+        .from("interviews")
+        .upload(practicePath, practiceClip.blob, { contentType: practiceClip.mimeType, upsert: false });
+
+      if (practiceUpErr) throw practiceUpErr;
+
+      // Update interview record with practice storage info
+      await supabase.from("interviews").update({
+        practice_storage_path: practicePath,
+        practice_mime_type: practiceClip.mimeType,
+        practice_duration_seconds: practiceClip.durationSeconds,
+      }).eq("id", interviewId);
+    }
+
+    // 3) Upload each interview clip + insert answer row
     const totalUploads = recordedClips.length;
     let completed = 0;
 
@@ -636,7 +657,7 @@ async function submitInterview() {
       els.uploadBar.style.width = `${pct}%`;
     }
 
-    // 3) Trigger email to careers inbox (Edge Function)
+    // 4) Trigger email to careers inbox (Edge Function)
     els.uploadStatus.textContent = "Sending notification…";
     const { error: fnErr } = await supabase.functions.invoke("send-interview-email", {
       body: {
@@ -649,7 +670,7 @@ async function submitInterview() {
     // Mark as submitted
     await supabase.from("interviews").update({ status: "submitted" }).eq("id", interviewId);
 
-    // 4) Done
+    // 5) Done
     els.uploadBar.style.width = "100%";
     els.uploadStatus.textContent = "Submitted.";
     setStatus("Submitted");

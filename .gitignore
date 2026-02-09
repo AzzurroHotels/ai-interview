@@ -1,0 +1,10 @@
+# Supabase CLI temp files
+supabase/.temp/
+
+# Node modules (if needed temporarily)
+node_modules/
+package-lock.json
+
+# Environment files (if you add them later)
+.env
+.env.local

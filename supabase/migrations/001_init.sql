@@ -35,7 +35,12 @@ create table public.interviews (
 
   -- Flags used by app.js (IMPORTANT)
   visibility_hidden_count int not null default 0,
-  practice_records int not null default 0
+  practice_rerecords int not null default 0,
+
+  -- Practice recording storage
+  practice_storage_path text,
+  practice_mime_type text,
+  practice_duration_seconds int
 );
 
 -- --------------------------------------------
