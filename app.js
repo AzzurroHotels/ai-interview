@@ -29,8 +29,7 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const CONFIG = {
   role: "Remote Hotel Receptionist",
   mode: "video", // fixed for this project
-  // Balanced policy: practice intro + strict real questions
-  allowRerecordsPerQuestion: 1,
+  // No re-records allowed - one take only
   aiVoiceEnabled: true,
   aiVoiceRate: 1.50,
   aiVoicePitch: 1.0,
@@ -301,7 +300,6 @@ let practiceRerecords = 0;
 let interviewPlan = []; // [{question, followupText, index}]
 let currentIdx = 0;
 
-let rerecordsUsed = 0;
 let currentClip = null; // { blob, durationSeconds, mimeType }
 let recordedClips = []; // for upload [{question_id, question_text, followup_text, blob, duration_seconds, mime_type}]
 
@@ -401,27 +399,13 @@ els.practiceStopBtn.addEventListener("click", async () => {
 
   els.practiceStopBtn.disabled = true;
   els.practiceRecordBtn.disabled = true;
-  els.practiceRetryBtn.disabled = false;
+  els.practiceRetryBtn.disabled = true;  // No retries allowed
   els.practiceContinueBtn.disabled = false;
 
   setStatus("Practice recorded");
 });
 
-els.practiceRetryBtn.addEventListener("click", () => {
-  // allow unlimited re-record for practice
-  practiceClip = null;
-  practiceRerecords += 1;
-
-  els.practicePlaybackWrap.classList.add("hidden");
-  els.practicePlayback.removeAttribute("src");
-
-  els.practiceRecordBtn.disabled = false;
-  els.practiceStopBtn.disabled = true;
-  els.practiceRetryBtn.disabled = true;
-  els.practiceContinueBtn.disabled = true;
-
-  setStatus("Practice ready");
-});
+// Practice retry button removed - no retakes allowed
 
 els.practiceContinueBtn.addEventListener("click", () => {
   // Build interview plan: shuffle main questions; pick 1 follow-up each
@@ -453,7 +437,6 @@ function loadQuestion() {
   }
 
   // Reset controls
-  rerecordsUsed = 0;
   currentClip = null;
   els.playbackWrap.classList.add("hidden");
   els.playback.removeAttribute("src");
@@ -514,28 +497,13 @@ els.stopBtn.addEventListener("click", async () => {
   els.playbackMeta.textContent = `Duration: ~${clip.durationSeconds}s • Size: ${formatBytes(clip.blob.size)}`;
 
   els.stopBtn.disabled = true;
-  els.retryBtn.disabled = rerecordsUsed >= CONFIG.allowRerecordsPerQuestion;
+  els.retryBtn.disabled = true;  // No retries allowed
   els.nextBtn.disabled = false;
 
   setStatus("Recorded");
 });
 
-els.retryBtn.addEventListener("click", () => {
-  if (rerecordsUsed >= CONFIG.allowRerecordsPerQuestion) return;
-  rerecordsUsed += 1;
-  currentClip = null;
-
-  els.playbackWrap.classList.add("hidden");
-  els.playback.removeAttribute("src");
-  els.playbackMeta.textContent = "";
-
-  els.recordBtn.disabled = false;
-  els.stopBtn.disabled = true;
-  els.retryBtn.disabled = true;
-  els.nextBtn.disabled = true;
-
-  setStatus(`Re-record (${rerecordsUsed}/${CONFIG.allowRerecordsPerQuestion})`);
-});
+// Retry button removed - no retakes allowed
 
 els.nextBtn.addEventListener("click", () => {
   if (!currentClip) return;
