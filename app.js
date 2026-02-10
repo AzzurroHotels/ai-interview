@@ -119,7 +119,6 @@ const els = {
   // practice
   practiceRecordBtn: document.getElementById("practiceRecordBtn"),
   practiceStopBtn: document.getElementById("practiceStopBtn"),
-  practiceRetryBtn: document.getElementById("practiceRetryBtn"),
   practiceContinueBtn: document.getElementById("practiceContinueBtn"),
   practicePlaybackWrap: document.getElementById("practicePlaybackWrap"),
   practicePlayback: document.getElementById("practicePlayback"),
@@ -137,7 +136,6 @@ const els = {
   // interview controls
   recordBtn: document.getElementById("recordBtn"),
   stopBtn: document.getElementById("stopBtn"),
-  retryBtn: document.getElementById("retryBtn"),
   nextBtn: document.getElementById("nextBtn"),
   playbackWrap: document.getElementById("playbackWrap"),
   playback: document.getElementById("playback"),
@@ -369,7 +367,7 @@ els.practiceRecordBtn.addEventListener("click", () => {
 
   els.practiceRecordBtn.disabled = true;
   els.practiceStopBtn.disabled = false;
-  els.practiceRetryBtn.disabled = true;
+
   els.practiceContinueBtn.disabled = true;
 
   setStatus("Recording practice…");
@@ -386,7 +384,7 @@ els.practiceStopBtn.addEventListener("click", async () => {
     alert("Recording failed. Please try again.");
     els.practiceRecordBtn.disabled = false;
     els.practiceStopBtn.disabled = true;
-    els.practiceRetryBtn.disabled = true;
+  
     els.practiceContinueBtn.disabled = true;
     return;
   }
@@ -399,7 +397,6 @@ els.practiceStopBtn.addEventListener("click", async () => {
 
   els.practiceStopBtn.disabled = true;
   els.practiceRecordBtn.disabled = true;
-  els.practiceRetryBtn.disabled = true;  // No retries allowed
   els.practiceContinueBtn.disabled = false;
 
   setStatus("Practice recorded");
@@ -445,7 +442,7 @@ function loadQuestion() {
 
   els.recordBtn.disabled = false;
   els.stopBtn.disabled = true;
-  els.retryBtn.disabled = true;
+
   els.nextBtn.disabled = true;
 
   // AI voice reads the question + follow-up (hotel-standard tone)
@@ -467,7 +464,7 @@ els.recordBtn.addEventListener("click", () => {
 
   els.recordBtn.disabled = true;
   els.stopBtn.disabled = false;
-  els.retryBtn.disabled = true;
+
   els.nextBtn.disabled = true;
 
   setStatus("Recording…");
@@ -484,7 +481,7 @@ els.stopBtn.addEventListener("click", async () => {
     alert("Recording failed. Please try again.");
     els.recordBtn.disabled = false;
     els.stopBtn.disabled = true;
-    els.retryBtn.disabled = true;
+  
     els.nextBtn.disabled = true;
     return;
   }
@@ -497,7 +494,6 @@ els.stopBtn.addEventListener("click", async () => {
   els.playbackMeta.textContent = `Duration: ~${clip.durationSeconds}s • Size: ${formatBytes(clip.blob.size)}`;
 
   els.stopBtn.disabled = true;
-  els.retryBtn.disabled = true;  // No retries allowed
   els.nextBtn.disabled = false;
 
   setStatus("Recorded");
