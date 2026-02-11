@@ -438,37 +438,31 @@ function loadQuestion() {
   els.playbackWrap.classList.add("hidden");
   els.playback.removeAttribute("src");
   els.playbackMeta.textContent = "";
-  els.hintText.textContent = "Answer clearly and professionally. When ready, press Record.";
+  els.hintText.textContent = "Recording has started. Answer clearly and professionally.";
 
-  els.recordBtn.disabled = false;
-  els.stopBtn.disabled = true;
+  // Auto-start recording
+  recorder = new ClipRecorder(stream);
+  recorder.start();
+
+  els.recordBtn.disabled = true;
+  els.recordBtn.classList.add("hidden");
+  els.stopBtn.disabled = false;
 
   els.nextBtn.disabled = true;
+
+  setStatus("Recording…");
 
   // AI voice reads the question + follow-up (hotel-standard tone)
   const voiceText = item.followupText
     ? `Question ${currentIdx + 1}. ${item.question.text} Follow-up: ${item.followupText}`
     : `Question ${currentIdx + 1}. ${item.question.text}`;
 
-  els.aiText.textContent = `“${voiceText}”`;
+  els.aiText.textContent = `"${voiceText}"`;
   speak(voiceText);
 }
 
 // Interview recording controls
 let recorder = null;
-
-els.recordBtn.addEventListener("click", () => {
-  if (!stream) return;
-  recorder = new ClipRecorder(stream);
-  recorder.start();
-
-  els.recordBtn.disabled = true;
-  els.stopBtn.disabled = false;
-
-  els.nextBtn.disabled = true;
-
-  setStatus("Recording…");
-});
 
 els.stopBtn.addEventListener("click", async () => {
   if (!recorder) return;
