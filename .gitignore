@@ -1,10 +1,17 @@
 # Supabase CLI temp files
 supabase/.temp/
 
-# Node modules (if needed temporarily)
+# Node modules
 node_modules/
 package-lock.json
 
-# Environment files (if you add them later)
+# Environment files
 .env
 .env.local
+
+# Uploads (contains interview recordings)
+uploads/
+
+# SQLite database
+interview.db
+interview.db-*

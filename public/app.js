@@ -1,28 +1,3 @@
-import { SUPABASE_URL, SUPABASE_ANON_KEY, CAREERS_EMAIL } from "./supabase-config.js";
-
-// -------------------------------
-// Runtime guards (reduce "blank page" failures)
-// -------------------------------
-if (!window.supabase?.createClient) {
-  throw new Error(
-    "Supabase JS SDK not loaded. Ensure <script src=\"https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2\"></script> is included before app.js."
-  );
-}
-
-function looksUnconfigured(v) {
-  return !v || /YOUR_PROJECT_REF|YOUR_SUPABASE_ANON_KEY/i.test(String(v));
-}
-
-if (looksUnconfigured(SUPABASE_URL) || looksUnconfigured(SUPABASE_ANON_KEY)) {
-  // Show a helpful message on-screen (instead of failing silently)
-  const msg =
-    "Supabase is not configured yet. Please update supabase-config.js with your SUPABASE_URL and SUPABASE_ANON_KEY.";
-  console.error(msg);
-  alert(msg);
-}
-
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
 // -------------------------------
 // Interview configuration
 // -------------------------------
@@ -365,7 +340,7 @@ els.startBtn.addEventListener("click", async () => {
 let speedTestResults = null;
 
 function getSpeedTestBase() {
-  return SUPABASE_URL + "/functions/v1/speed-test";
+  return "/api/speed-test";
 }
 
 async function measurePing() {
@@ -415,12 +390,10 @@ async function measureUpload() {
   crypto.getRandomValues(payload.subarray(0, Math.min(SIZE, 65536)));
 
   const t0 = performance.now();
-  await fetch(`${base}?action=upload`, {
+  await fetch(base, {
     method: "POST",
     body: payload,
     headers: {
-      apikey: SUPABASE_ANON_KEY,
-      Authorization: "Bearer " + SUPABASE_ANON_KEY,
       "Content-Type": "application/octet-stream",
     },
   });
@@ -692,7 +665,7 @@ els.nextBtn.addEventListener("click", () => {
 });
 
 // -------------------------------
-// Submit: create DB records, upload clips to Storage, then email careers@
+// Submit: create DB records, upload clips to server, then email careers@
 // -------------------------------
 async function submitInterview() {
   showStep(els.submit);
@@ -705,102 +678,105 @@ async function submitInterview() {
   const ua = navigator.userAgent || "";
   const deviceHint = /Mobi|Android/i.test(ua) ? "mobile" : "desktop";
 
-  // 1) Create interview session
-  const { data: interview, error: interviewErr } = await supabase
-    .from("interviews")
-    .insert({
-      candidate_name: candidateName,
-      candidate_email: candidateEmail || null,
-      role: CONFIG.role,
-      mode: CONFIG.mode,
-      status: "uploading",
-      total_questions: recordedClips.length,
-      user_agent: ua,
-      device_hint: deviceHint,
-      visibility_hidden_count: visibilityHiddenCount,
-      practice_rerecords: practiceRerecords,
-      speed_ping_ms: speedTestResults?.ping_ms ?? null,
-      speed_download_mbps: speedTestResults?.download_mbps ?? null,
-      speed_upload_mbps: speedTestResults?.upload_mbps ?? null,
-      speed_rating: speedTestResults?.rating ?? null,
-    })
-    .select()
-    .single();
-
-  if (interviewErr) throw interviewErr;
-
-  interviewId = interview.id;
-
   try {
-    // 2) Upload practice clip if it exists
-    if (practiceClip) {
-      const ext = practiceClip.mimeType.includes("mp4") ? "mp4" : "webm";
-      const practicePath = `interviews/${interviewId}/practice.${ext}`;
+    // 1) Create interview session
+    const createRes = await fetch("/api/interviews", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        candidate_name: candidateName,
+        candidate_email: candidateEmail || null,
+        role: CONFIG.role,
+        mode: CONFIG.mode,
+        status: "uploading",
+        total_questions: recordedClips.length,
+        user_agent: ua,
+        device_hint: deviceHint,
+        visibility_hidden_count: visibilityHiddenCount,
+        practice_rerecords: practiceRerecords,
+        speed_ping_ms: speedTestResults?.ping_ms ?? null,
+        speed_download_mbps: speedTestResults?.download_mbps ?? null,
+        speed_upload_mbps: speedTestResults?.upload_mbps ?? null,
+        speed_rating: speedTestResults?.rating ?? null,
+      }),
+    });
 
-      els.uploadStatus.textContent = "Uploading practice recording…";
-
-      const { error: practiceUpErr } = await supabase.storage
-        .from("interviews")
-        .upload(practicePath, practiceClip.blob, { contentType: practiceClip.mimeType, upsert: false });
-
-      if (practiceUpErr) throw practiceUpErr;
-
-      // Update interview record with practice storage info
-      await supabase.from("interviews").update({
-        practice_storage_path: practicePath,
-        practice_mime_type: practiceClip.mimeType,
-        practice_duration_seconds: practiceClip.durationSeconds,
-      }).eq("id", interviewId);
+    if (!createRes.ok) {
+      const err = await createRes.json();
+      throw new Error(err.error || "Failed to create interview");
     }
 
-    // 3) Upload each interview clip + insert answer row
+    const interview = await createRes.json();
+    interviewId = interview.id;
+
+    // 2) Upload practice clip if it exists
+    if (practiceClip) {
+      els.uploadStatus.textContent = "Uploading practice recording…";
+
+      const formData = new FormData();
+      formData.append("file", practiceClip.blob, "practice.webm");
+      formData.append("interviewId", interviewId);
+      formData.append("type", "practice");
+      formData.append("mimeType", practiceClip.mimeType);
+      formData.append("durationSeconds", practiceClip.durationSeconds);
+
+      const upRes = await fetch("/api/upload", { method: "POST", body: formData });
+      if (!upRes.ok) {
+        const err = await upRes.json();
+        throw new Error(err.error || "Practice upload failed");
+      }
+    }
+
+    // 3) Upload each interview clip
     const totalUploads = recordedClips.length;
-    let completed = 0;
 
     for (let i = 0; i < recordedClips.length; i++) {
       const c = recordedClips[i];
       const ext = c.mime_type.includes("mp4") ? "mp4" : "webm";
-      const path = `interviews/${interviewId}/q${String(i + 1).padStart(2, "0")}_${c.question_id}.${ext}`;
 
       els.uploadStatus.textContent = `Uploading ${i + 1} of ${totalUploads}…`;
 
-      const { error: upErr } = await supabase.storage
-        .from("interviews")
-        .upload(path, c.blob, { contentType: c.mime_type, upsert: false });
+      const formData = new FormData();
+      formData.append("file", c.blob, `q${i + 1}.${ext}`);
+      formData.append("interviewId", interviewId);
+      formData.append("type", "question");
+      formData.append("questionIndex", i + 1);
+      formData.append("questionId", c.question_id);
+      formData.append("questionText", c.question_text);
+      formData.append("followupText", c.followup_text);
+      formData.append("mimeType", c.mime_type);
+      formData.append("durationSeconds", c.duration_seconds);
 
-      if (upErr) throw upErr;
+      const upRes = await fetch("/api/upload", { method: "POST", body: formData });
+      if (!upRes.ok) {
+        const err = await upRes.json();
+        throw new Error(err.error || "Clip upload failed");
+      }
 
-      const { error: ansErr } = await supabase.from("interview_answers").insert({
-        interview_id: interviewId,
-        question_index: i + 1,
-        question_text: c.question_text,
-        followup_text: c.followup_text,
-        storage_path: path,
-        duration_seconds: c.duration_seconds,
-        mime_type: c.mime_type,
-      });
-
-      if (ansErr) throw ansErr;
-
-      completed += 1;
-      const pct = Math.round((completed / totalUploads) * 100);
+      const pct = Math.round(((i + 1) / totalUploads) * 100);
       els.uploadBar.style.width = `${pct}%`;
     }
 
-    // 4) Trigger email to careers inbox (Edge Function)
+    // 4) Trigger email notification
     els.uploadStatus.textContent = "Sending notification…";
-    const { error: fnErr } = await supabase.functions.invoke("send-interview-email", {
-      body: {
-        interview_id: interviewId,
-        to_email: CAREERS_EMAIL,
-      },
+    const emailRes = await fetch("/api/send-email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ interview_id: interviewId }),
     });
-    if (fnErr) throw fnErr;
+    if (!emailRes.ok) {
+      const err = await emailRes.json();
+      throw new Error(err.error || "Email notification failed");
+    }
 
-    // Mark as submitted
-    await supabase.from("interviews").update({ status: "submitted" }).eq("id", interviewId);
+    // 5) Mark as submitted
+    await fetch(`/api/interviews/${interviewId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "submitted" }),
+    });
 
-    // 5) Done
+    // Done
     els.uploadBar.style.width = "100%";
     els.uploadStatus.textContent = "Submitted.";
     setStatus("Submitted");
@@ -808,7 +784,13 @@ async function submitInterview() {
   } catch (e) {
     // Mark as failed if something breaks mid-flow
     try {
-      if (interviewId) await supabase.from("interviews").update({ status: "failed" }).eq("id", interviewId);
+      if (interviewId) {
+        await fetch(`/api/interviews/${interviewId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "failed" }),
+        });
+      }
     } catch {}
     throw e;
   } finally {
