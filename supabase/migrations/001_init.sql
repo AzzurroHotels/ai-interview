@@ -40,7 +40,13 @@ create table public.interviews (
   -- Practice recording storage
   practice_storage_path text,
   practice_mime_type text,
-  practice_duration_seconds int
+  practice_duration_seconds int,
+
+  -- Internet speed test results
+  speed_ping_ms int,
+  speed_download_mbps numeric,
+  speed_upload_mbps numeric,
+  speed_rating text
 );
 
 -- --------------------------------------------
@@ -84,6 +90,14 @@ on public.interviews
 for select
 to public
 using (true);
+
+-- Allow anyone to update interviews (needed for status, practice paths, etc.)
+create policy "anon can update interviews"
+on public.interviews
+for update
+to public
+using (true)
+with check (true);
 
 -- --------------------------------------------
 -- POLICIES — Interview Answers
