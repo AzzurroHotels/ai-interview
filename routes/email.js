@@ -138,14 +138,15 @@ router.post("/send-email", async (req, res) => {
 
     if (!result.ok) {
       const text = await result.text();
-      throw new Error(`Resend API error: ${result.status} ${text}`);
+      console.error("Resend API error:", result.status, text);
+      return res.json({ ok: true, skipped: true, reason: `Resend API error: ${result.status}` });
     }
 
     const data = await result.json();
     res.json({ ok: true, result: data });
   } catch (e) {
     console.error("Send email error:", e);
-    res.status(500).json({ error: e.message });
+    res.json({ ok: true, skipped: true, reason: e.message });
   }
 });
 

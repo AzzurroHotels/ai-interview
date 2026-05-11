@@ -757,16 +757,16 @@ async function submitInterview() {
       els.uploadBar.style.width = `${pct}%`;
     }
 
-    // 4) Trigger email notification
+    // 4) Trigger email notification (non-blocking)
     els.uploadStatus.textContent = "Sending notification…";
-    const emailRes = await fetch("/api/send-email", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ interview_id: interviewId }),
-    });
-    if (!emailRes.ok) {
-      const err = await emailRes.json();
-      throw new Error(err.error || "Email notification failed");
+    try {
+      await fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ interview_id: interviewId }),
+      });
+    } catch {
+      // Email is best-effort — don't fail the submission
     }
 
     // 5) Mark as submitted
