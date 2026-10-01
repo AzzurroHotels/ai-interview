@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Azzurro • Operations Interview</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="icon" type="image/x-icon" href="./favicon.ico" />
+  <style>
+    .warnbanner{
+      display:none;
+      margin-top:12px; padding:10px 12px; border-radius:12px;
+      border:1px solid rgba(220,38,38,0.35);
+      background:rgba(220,38,38,0.08);
+      color:#b91c1c; font-size:13px; font-weight:800; line-height:1.35;
+    }
+    .warnbanner.show{ display:block; }
+    .micpill{
+      display:flex; align-items:center; gap:10px;
+      padding:12px 12px; border-radius:14px;
+      border:1px solid rgba(11,27,43,0.10);
+      background:rgba(255,255,255,0.62);
+      font-size:13px; font-weight:800; color:rgba(11,27,43,0.75);
+    }
+    .micdot{
+      width:10px; height:10px; border-radius:99px;
+      background:#b91c1c; flex:0 0 auto;
+    }
+    .micdot.live{ background:#16a34a; animation:pulse 1.4s infinite; }
+    @keyframes pulse{
+      0%{ box-shadow:0 0 0 0 rgba(22,163,74,.5); }
+      70%{ box-shadow:0 0 0 8px rgba(22,163,74,0); }
+      100%{ box-shadow:0 0 0 0 rgba(22,163,74,0); }
+    }
+    .saveState{ margin-top:10px; font-size:13px; font-weight:800; color:rgba(11,27,43,0.66); min-height:18px; }
+    .saveState.ok{ color:#16a34a; }
+    .saveState.err{ color:#b91c1c; }
+    .playback audio{ width:100%; border-radius:14px; border:1px solid rgba(11,27,43,0.10); background:#fff; }
+    .qlist{ margin:0; padding-left:0; list-style:none; color:rgba(11,27,43,0.66); line-height:1.5; font-size:13px; }
+    .qlist li{ margin:8px 0; padding-left:22px; position:relative; }
+    .qlist li::before{
+      content:""; position:absolute; left:0; top:4px;
+      width:10px; height:10px; border-radius:99px;
+      background:rgba(11,27,43,0.18);
+    }
+    .qlist li.done::before{ background:#16a34a; }
+    .qlist li.active::before{ background:#1d8bff; box-shadow:0 0 0 4px rgba(29,139,255,0.18); }
+  </style>
+</head>
+<body>
+  <div class="bg">
+    <div class="sun"></div>
+    <div class="wave w1"></div>
+    <div class="wave w2"></div>
+  </div>
+
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="mark" aria-hidden="true"><span class="a">A</span></div>
+        <div class="brandtext">
+          <div class="brandname">Azzurro Hotels</div>
+          <div class="brandtag">AI Interview Portal • Operations (Developer)</div>
+        </div>
+      </div>
+
+      <div class="statuspill" id="statusPill" title="System status">
+        <span class="dot"></span>
+        <span id="statusText">Ready</span>
+      </div>
+    </header>
+
+    <section class="panel" role="region" aria-label="Operations interview panel">
+      <!-- LEFT -->
+      <div class="left">
+        <div class="card hero">
+          <div class="badge">Operations • Voice Interview</div>
+          <h1 id="pageTitle">Operations Interview</h1>
+          <p class="lead" id="pageLead">
+            This is a short spoken interview about our operations. <strong>Your microphone will be recorded</strong> — no camera is needed.
+          </p>
+
+          <div class="divider"></div>
+
+          <!-- WELCOME -->
+          <div id="step-welcome">
+            <div class="tips">
+              <div class="tip">
+                <div class="tiptitle">One take only</div>
+                <div class="tipbody">There are no re-records. Take your time, think it through, then start answering.</div>
+              </div>
+              <div class="tip">
+                <div class="tiptitle">Keep the Notion open</div>
+                <div class="tipbody">Review the Notion in another tab while you answer. Nothing is timed.</div>
+              </div>
+              <div class="tip">
+                <div class="tiptitle">Tab switches are recorded</div>
+                <div class="tipbody">Switching tabs is detected and shown to the team, so use it only to check the Notion.</div>
+              </div>
+              <div class="tip">
+                <div class="tiptitle">Audio only</div>
+                <div class="tipbody">No camera needed. Find a quiet spot — your voice is the interview.</div>
+              </div>
+            </div>
+
+            <label class="check">
+              <input type="checkbox" id="consent" />
+              <span>I consent to my voice being recorded for recruitment purposes.</span>
+            </label>
+
+            <div class="field" style="margin-top:12px; max-width:420px;">
+              <label for="fullName">Full name</label>
+              <input id="fullName" placeholder="e.g., Maria Santos" autocomplete="name" />
+            </div>
+
+            <button class="primary" id="startBtn" style="margin-top:14px;">
+              Start Interview
+              <span class="arrow" aria-hidden="true">→</span>
+            </button>
+
+            <p class="fineprint">
+              By continuing, you confirm you understand this interview is recorded and reviewed by Azzurro Hotels for recruitment purposes.
+            </p>
+          </div>
+
+          <!-- INTERVIEW -->
+          <div id="step-interview" class="hidden">
+            <div class="airow">
+              <div class="aiicon" aria-hidden="true">AI</div>
+              <div class="aispeech">
+                <div class="ailabel">Azzurro AI Voice</div>
+                <div class="aitext" id="aiText">"We’ll begin the interview now."</div>
+              </div>
+            </div>
+
+            <div class="warnbanner" id="tabWarning"></div>
+
+            <div class="qwrap">
+              <div class="qmeta">
+                <div class="qbadge" id="qBadge">Question</div>
+                <div class="qprogress" id="qProgress">—</div>
+              </div>
+              <h2 id="question">…</h2>
+            </div>
+
+            <div class="controls">
+              <button class="ghost2" id="startAnswerBtn">Start Answer</button>
+              <button class="ghost2" id="stopAnswerBtn" disabled>Stop &amp; Save</button>
+              <button class="ghost2 hidden" id="retrySaveBtn">Retry Save</button>
+              <button class="primarySmall" id="nextBtn" disabled>Next Question →</button>
+            </div>
+
+            <div class="saveState" id="saveState"></div>
+
+            <div class="playback hidden" id="playbackWrap">
+              <div class="playbackTitle">Your saved answer</div>
+              <audio id="playback" controls playsinline></audio>
+              <div class="playbackMeta" id="playbackMeta"></div>
+            </div>
+
+            <div class="hint" id="hintText">
+              You get one take. When you’re ready, press Start Answer.
+            </div>
+          </div>
+
+          <!-- DONE -->
+          <div id="step-done" class="hidden">
+            <h2>Interview Submitted</h2>
+            <p class="lead">Thank you. Our team will review your answers and get back to you.</p>
+            <p class="fineprint">You may now close this page.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT -->
+      <div class="right">
+        <div class="card previewcard">
+          <div class="previewhead">
+            <div class="previewtitle">Recording Setup</div>
+            <div class="previewsub">Audio only • No camera</div>
+          </div>
+
+          <div class="micpill" id="micPill">
+            <span class="micdot" id="micDot"></span>
+            <span id="micStatus">Microphone not connected</span>
+          </div>
+
+          <div class="previewfoot">
+            <div class="footitem"><span class="k">Mode</span><span class="v">Audio</span></div>
+            <div class="footitem"><span class="k">Camera</span><span class="v">Off</span></div>
+            <div class="footitem"><span class="k">Takes</span><span class="v">1</span></div>
+          </div>
+
+          <p class="fineprint rightfine">
+            Tip: Find a quiet room and speak at a natural pace. Keep your answers clear and specific.
+          </p>
+        </div>
+
+        <div class="mini card">
+          <div class="minititle">Questions</div>
+          <ul class="qlist" id="qList"></ul>
+        </div>
+
+        <div class="mini card">
+          <div class="minititle">What we assess</div>
+          <ul class="bullets">
+            <li>Curiosity and initiative</li>
+            <li>Clarity of communication</li>
+            <li>Understanding of operations</li>
+            <li>Ownership and follow-through</li>
+            <li>Practical suggestions</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <span>© Azzurro Hotels • AI Interview Portal</span>
+      <span class="sep">•</span>
+      <span>Designed for desktop &amp; mobile</span>
+    </footer>
+  </main>
+
+  <script src="./operations-dev.js"></script>
+</body>
+</html>

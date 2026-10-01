@@ -1,5 +1,12 @@
 import { Router } from "express";
-import { createInterview, updateInterview, getInterviewById, getAnswersByInterviewId } from "../db.js";
+import {
+  createInterview,
+  updateInterview,
+  getInterviewById,
+  getAnswersByInterviewId,
+  touchInterview,
+  abandonInterview,
+} from "../db.js";
 
 const router = Router();
 
@@ -15,9 +22,11 @@ router.post("/interviews", (req, res) => {
       candidate_name: data.candidate_name,
       candidate_email: data.candidate_email || null,
       role: data.role,
+      slug: data.slug || "receptionist",
       mode: data.mode || "video",
       status: data.status || "uploading",
       total_questions: data.total_questions || 0,
+      current_question: data.current_question || 0,
       user_agent: data.user_agent || null,
       device_hint: data.device_hint || null,
       visibility_hidden_count: data.visibility_hidden_count || 0,
@@ -48,6 +57,30 @@ router.put("/interviews/:id", (req, res) => {
     res.json(updated);
   } catch (e) {
     console.error("Update interview error:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Keep-alive while a candidate is answering (updates last_seen_at + progress)
+router.post("/interviews/:id/heartbeat", (req, res) => {
+  try {
+    const { id } = req.params;
+    const changed = touchInterview(id, req.body || {});
+    if (!changed) return res.status(404).json({ error: "Interview not found" });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("Heartbeat error:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Beacon fired when the candidate leaves mid-interview
+router.post("/interviews/:id/abandon", (req, res) => {
+  try {
+    abandonInterview(req.params.id);
+    res.status(204).end();
+  } catch (e) {
+    console.error("Abandon error:", e);
     res.status(500).json({ error: e.message });
   }
 });

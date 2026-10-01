@@ -2,7 +2,13 @@ import { Router } from "express";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { getUploadDir, updateInterview, createAnswer } from "../db.js";
+import {
+  getUploadDir,
+  updateInterview,
+  createAnswer,
+  updateAnswer,
+  getAnswerByInterviewAndIndex,
+} from "../db.js";
 
 const router = Router();
 
@@ -45,15 +51,28 @@ router.post("/upload", upload.single("file"), (req, res) => {
         practice_duration_seconds: Number(durationSeconds) || 0,
       });
     } else {
-      createAnswer({
-        interview_id: interviewId,
-        question_index: Number(questionIndex) || 0,
-        question_text: questionText || "",
-        followup_text: followupText || "",
-        storage_path: relativePath,
-        mime_type: mimeType,
-        duration_seconds: Number(durationSeconds) || 0,
-      });
+      const idx = Number(questionIndex) || 0;
+      const existing = getAnswerByInterviewAndIndex(interviewId, idx);
+      if (existing) {
+        // Retry after a failed upload — replace the file reference instead of duplicating
+        updateAnswer(existing.id, {
+          question_text: questionText || existing.question_text,
+          followup_text: followupText || existing.followup_text,
+          storage_path: relativePath,
+          mime_type: mimeType,
+          duration_seconds: Number(durationSeconds) || 0,
+        });
+      } else {
+        createAnswer({
+          interview_id: interviewId,
+          question_index: idx,
+          question_text: questionText || "",
+          followup_text: followupText || "",
+          storage_path: relativePath,
+          mime_type: mimeType,
+          duration_seconds: Number(durationSeconds) || 0,
+        });
+      }
     }
 
     res.json({ ok: true, path: relativePath });
