@@ -1,33 +1,47 @@
-const TOKEN_KEY = "azzurro_admin_token";
-
 const els = {
-  status: document.getElementById("statusText"),
-  authCard: document.getElementById("authCard"),
-  dashCard: document.getElementById("dashCard"),
-  tokenInput: document.getElementById("tokenInput"),
-  tokenSaveBtn: document.getElementById("tokenSaveBtn"),
-  tokenClearBtn: document.getElementById("tokenClearBtn"),
-  authError: document.getElementById("authError"),
-  filters: document.getElementById("filters"),
-  counts: document.getElementById("counts"),
-  rows: document.getElementById("rows"),
-  emptyState: document.getElementById("emptyState"),
-  detailWrap: document.getElementById("detailWrap"),
+  loginView: document.getElementById("loginView"),
+  adminView: document.getElementById("adminView"),
+  loginForm: document.getElementById("loginForm"),
+  loginError: document.getElementById("loginError"),
+  password: document.getElementById("password"),
+  logoutBtn: document.getElementById("logoutBtn"),
   refreshBtn: document.getElementById("refreshBtn"),
-  lastRefreshed: document.getElementById("lastRefreshed"),
+  searchInput: document.getElementById("searchInput"),
+  summary: document.getElementById("summary"),
+  list: document.getElementById("submissionList"),
+  emptyState: document.getElementById("emptyState"),
+  detail: document.getElementById("detailView"),
 };
+
+let submissions = [];
+let selectedId = null;
 
 const OPS_COVERS = {
   2: "Cleaning shifts & how cleaning happens • task ownership • where receptionists fit in • contractors • how guests find us • check-in process • reception info • how issues and complaints are reported and escalated",
   5: "Reporting path • who owns the fix • timelines • escalation",
 };
 
-let token = localStorage.getItem(TOKEN_KEY) || "";
-let activeSlug = "";
-let refreshTimer = null;
+function mediaTag(url, mimeType) {
+  const isVideo = String(mimeType || "").startsWith("video");
+  return isVideo
+    ? `<video controls preload="metadata" src="${escapeHtml(url)}"></video>`
+    : `<audio controls preload="metadata" src="${escapeHtml(url)}"></audio>`;
+}
 
-function escapeHtml(s) {
-  return String(s ?? "")
+function showLogin() {
+  els.loginView.classList.remove("hidden");
+  els.adminView.classList.add("hidden");
+  els.logoutBtn.classList.add("hidden");
+}
+
+function showAdmin() {
+  els.loginView.classList.add("hidden");
+  els.adminView.classList.remove("hidden");
+  els.logoutBtn.classList.remove("hidden");
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -36,229 +50,195 @@ function escapeHtml(s) {
 }
 
 function fmtDate(value) {
-  if (!value) return "—";
-  const d = new Date(String(value).replace(" ", "T") + "Z");
-  if (isNaN(d.getTime())) return String(value);
-  return d.toLocaleString();
+  if (!value) return "Unknown date";
+  const normalized = String(value).includes("T") ? value : `${value} UTC`;
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
-function fmtRelative(value) {
-  if (!value) return "";
-  const d = new Date(String(value).replace(" ", "T") + "Z");
-  if (isNaN(d.getTime())) return "";
-  const diff = Date.now() - d.getTime();
-  const mins = Math.round(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.round(hours / 24)}d ago`;
+function statusClass(value) {
+  return `status ${String(value || "unknown").toLowerCase().replace(/[^a-z0-9_-]/g, "-")}`;
 }
 
-async function api(path) {
-  const res = await fetch(path, { headers: { "x-admin-token": token } });
-  if (res.status === 401) {
-    const err = new Error("Unauthorized");
-    err.status = 401;
-    throw err;
-  }
+async function api(path, options = {}) {
+  const res = await fetch(path, {
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    ...options,
+  });
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Request failed (${res.status})`);
+    throw new Error(data.error || `Request failed (${res.status})`);
   }
-  return res.json();
+  return data;
 }
 
-function showAuth(message) {
-  els.authCard.classList.remove("hidden");
-  els.dashCard.classList.add("hidden");
-  if (message) {
-    els.authError.textContent = message;
-    els.authError.classList.remove("hidden");
+function renderList() {
+  const total = submissions.length;
+  const failed = submissions.filter((s) => s.email_status === "failed").length;
+  const sent = submissions.filter((s) => s.email_status === "sent").length;
+  const abandoned = submissions.filter((s) => s.status === "abandoned").length;
+  els.summary.textContent = `${total} submissions. ${sent} emails sent. ${failed} email failures. ${abandoned} abandoned.`;
+
+  if (!submissions.length) {
+    els.list.innerHTML = `<div class="empty-list">No submissions found.</div>`;
+    return;
   }
-  clearInterval(refreshTimer);
+
+  els.list.innerHTML = submissions.map((item) => `
+    <button class="submission-row ${item.id === selectedId ? "active" : ""}" type="button" data-id="${escapeHtml(item.id)}">
+      <span class="row-main">
+        <strong>${escapeHtml(item.candidate_name)}</strong>
+        <span>${escapeHtml(item.candidate_email || "No email")} · ${escapeHtml(item.role)}</span>
+      </span>
+      <span class="row-meta">
+        <span class="badges">
+          <span class="${statusClass(item.status)}">${escapeHtml((item.status || "unknown").replaceAll("_", " "))}</span>
+          <span class="${statusClass(item.email_status)}">${escapeHtml(item.email_status || "pending")}</span>
+        </span>
+        <span>${fmtDate(item.created_at)}</span>
+        ${["abandoned", "in_progress"].includes(item.status) ? `<span>Last seen ${fmtDate(item.last_seen_at)}</span>` : ""}
+      </span>
+    </button>
+  `).join("");
 }
 
-function showDash() {
-  els.authCard.classList.add("hidden");
-  els.dashCard.classList.remove("hidden");
+async function loadSubmissions() {
+  els.summary.textContent = "Loading submissions...";
+  const query = els.searchInput.value.trim();
+  const data = await api(`/api/admin/submissions?limit=200&q=${encodeURIComponent(query)}`);
+  submissions = data.submissions || [];
+  renderList();
 }
 
-async function loadList() {
-  try {
-    const data = await api(`/api/admin/interviews${activeSlug ? `?slug=${encodeURIComponent(activeSlug)}` : ""}`);
-    showDash();
-    els.status.textContent = "Live";
-    renderCounts(data.counts || [], data.interviews.length);
-    renderRows(data.interviews || []);
-    els.lastRefreshed.textContent = `Last refreshed ${new Date().toLocaleTimeString()}`;
-  } catch (e) {
-    if (e.status === 401) {
-      showAuth("Invalid or missing token.");
-      return;
-    }
-    els.status.textContent = "Error";
-    console.error(e);
-    showAuth(e.message);
-  }
+function stat(label, value) {
+  return `
+    <div class="stat">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value ?? "-")}</strong>
+    </div>
+  `;
 }
 
-function renderCounts(counts, total) {
-  const parts = [`<div class="countchip">Total: ${total}</div>`];
-  for (const c of counts) {
-    parts.push(`<div class="countchip">${escapeHtml(c.status)}: ${c.count}</div>`);
-  }
-  els.counts.innerHTML = parts.join("");
-}
+function renderDetail(submission) {
+  const answers = submission.answers || [];
+  const practice = submission.practice_url ? `
+    <section>
+      <h3>Practice Recording</h3>
+      ${mediaTag(submission.practice_url, submission.practice_mime_type)}
+    </section>
+  ` : "";
 
-function renderRows(interviews) {
-  els.rows.innerHTML = "";
-  els.emptyState.style.display = interviews.length ? "none" : "block";
+  const answerHtml = answers.map((answer) => `
+    <section class="answer">
+      <h3>Question ${escapeHtml(answer.question_index)}</h3>
+      <p>${escapeHtml(answer.question_text)}</p>
+      ${answer.followup_text ? `<p class="muted"><strong>Follow-up:</strong> ${escapeHtml(answer.followup_text)}</p>` : ""}
+      ${submission.slug === "operations-dev" && OPS_COVERS[answer.question_index] ? `<p class="cover"><strong>Reviewer note — expected points:</strong> ${escapeHtml(OPS_COVERS[answer.question_index])}</p>` : ""}
+      ${mediaTag(answer.file_url, answer.mime_type)}
+      <a href="${escapeHtml(answer.file_url)}" target="_blank" rel="noopener">Open recording</a>
+    </section>
+  `).join("");
 
-  for (const it of interviews) {
-    const tr = document.createElement("tr");
-    tr.addEventListener("click", () => loadDetail(it.id));
-    tr.innerHTML = `
-      <td>
-        <div style="font-weight:900;">${escapeHtml(it.candidate_name)}</div>
-        <div class="muted">${escapeHtml(it.candidate_email || "")}</div>
-      </td>
-      <td>${escapeHtml(it.role)}<div class="muted">${escapeHtml(it.slug)}</div></td>
-      <td><span class="badgeStatus st-${escapeHtml(it.status)}">${escapeHtml(it.status.replace("_", " "))}</span></td>
-      <td>${fmtDate(it.created_at)}</td>
-      <td>${fmtDate(it.last_seen_at)}<div class="muted">${fmtRelative(it.last_seen_at)}</div></td>
-      <td>${it.answer_count}/${it.total_questions}${it.status === "abandoned" && it.current_question ? `<div class="muted">stopped at Q${it.current_question}</div>` : ""}</td>
-      <td>${it.visibility_hidden_count ?? 0}</td>
-    `;
-    els.rows.appendChild(tr);
-  }
-}
-
-function mediaTag(url, mimeType) {
-  const isVideo = String(mimeType || "").startsWith("video");
-  return isVideo
-    ? `<video controls playsinline preload="metadata" style="width:100%;margin-top:10px;border-radius:12px;border:1px solid rgba(11,27,43,0.10);background:#fff;"><source src="${escapeHtml(url)}"></video>`
-    : `<audio controls preload="metadata" src="${escapeHtml(url)}"></audio>`;
-}
-
-async function loadDetail(id) {
-  els.detailWrap.innerHTML = `<div class="card detail"><div class="muted">Loading…</div></div>`;
-  try {
-    const it = await api(`/api/admin/interviews/${encodeURIComponent(id)}`);
-
-    const speed = [
-      it.speed_ping_ms != null ? `Ping ${it.speed_ping_ms} ms` : null,
-      it.speed_download_mbps != null ? `Down ${it.speed_download_mbps} Mbps` : null,
-      it.speed_upload_mbps != null ? `Up ${it.speed_upload_mbps} Mbps` : null,
-      it.speed_rating ? `Rating ${it.speed_rating}` : null,
-    ].filter(Boolean).join(" • ");
-
-    const meta = `
-      <div class="metagrid">
-        <div class="metaitem"><span class="k">Candidate</span><span class="v">${escapeHtml(it.candidate_name)}</span></div>
-        <div class="metaitem"><span class="k">Track</span><span class="v">${escapeHtml(it.role)} (${escapeHtml(it.slug)})</span></div>
-        <div class="metaitem"><span class="k">Status</span><span class="v"><span class="badgeStatus st-${escapeHtml(it.status)}">${escapeHtml(it.status.replace("_", " "))}</span></span></div>
-        <div class="metaitem"><span class="k">Created</span><span class="v">${fmtDate(it.created_at)}</span></div>
-        <div class="metaitem"><span class="k">Last seen</span><span class="v">${fmtDate(it.last_seen_at)} ${fmtRelative(it.last_seen_at)}</span></div>
-        <div class="metaitem"><span class="k">Stopped at</span><span class="v">${it.current_question ? `Question ${it.current_question}` : "—"}</span></div>
-        <div class="metaitem"><span class="k">Tab switches</span><span class="v">${it.visibility_hidden_count ?? 0}</span></div>
-        <div class="metaitem"><span class="k">Device</span><span class="v">${escapeHtml(it.device_hint || "—")}</span></div>
-        ${speed ? `<div class="metaitem"><span class="k">Speed test</span><span class="v">${escapeHtml(speed)}</span></div>` : ""}
-        <div class="metaitem"><span class="k">Interview ID</span><span class="v">${escapeHtml(it.id)}</span></div>
+  els.detail.innerHTML = `
+    <header class="detail-header">
+      <div>
+        <h2>${escapeHtml(submission.candidate_name)}</h2>
+        <p>${escapeHtml(submission.candidate_email || "No candidate email")} · ${escapeHtml(submission.role)}</p>
       </div>
-    `;
+      <span class="${statusClass(submission.email_status)}">${escapeHtml(submission.email_status || "pending")}</span>
+    </header>
 
-    const practice = it.practice_url
-      ? `<div class="answerRow">
-           <div class="answerQ">Practice recording</div>
-           ${mediaTag(it.practice_url, it.practice_mime_type)}
-           <div class="answerMeta">${escapeHtml(it.practice_duration_seconds ? `${it.practice_duration_seconds}s` : "")}</div>
-         </div>`
-      : "";
+    <div class="stats">
+      ${stat("Submitted", fmtDate(submission.created_at))}
+      ${stat("Track", `${submission.role || "—"}${submission.slug ? ` (${submission.slug})` : ""}`)}
+      ${stat("Status", submission.status)}
+      ${stat("Questions", answers.length)}
+      ${stat("Stopped at", submission.current_question ? `Question ${submission.current_question}` : "—")}
+      ${stat("Last seen", fmtDate(submission.last_seen_at))}
+      ${stat("Device", submission.device_hint)}
+      ${stat("Tab switches", submission.visibility_hidden_count)}
+      ${stat("Speed", submission.speed_rating || "Not tested")}
+    </div>
 
-    const answers = (it.answers || [])
-      .map((a) => {
-        const cover =
-          it.slug === "operations-dev" && OPS_COVERS[a.question_index]
-            ? `<div class="cover"><strong>Reviewer note — expected points:</strong> ${escapeHtml(OPS_COVERS[a.question_index])}</div>`
-            : "";
-        const fu = a.followup_text
-          ? `<div class="answerFu"><strong>Follow-up:</strong> ${escapeHtml(a.followup_text)}</div>`
-          : "";
-        return `
-          <div class="answerRow">
-            <div class="answerQ">Q${a.question_index}: ${escapeHtml(a.question_text)}</div>
-            ${fu}
-            ${cover}
-            ${mediaTag(a.file_url, a.mime_type)}
-            <div class="answerMeta">Duration: ${a.duration_seconds != null ? `${a.duration_seconds}s` : "—"} • ${escapeHtml(a.mime_type || "")}</div>
-            <a class="linkbtn" href="${escapeHtml(a.file_url)}" target="_blank" rel="noopener">Open / download recording</a>
-          </div>
-        `;
-      })
-      .join("");
+    ${submission.email_error ? `<div class="notice"><strong>Email error:</strong> ${escapeHtml(submission.email_error)}</div>` : ""}
+    ${submission.email_message_id ? `<div class="notice ok"><strong>Email message id:</strong> ${escapeHtml(submission.email_message_id)}</div>` : ""}
 
-    els.detailWrap.innerHTML = `
-      <div class="card detail">
-        <div class="toolbar">
-          <div class="minititle" style="margin:0;">Submission detail</div>
-          <button class="ghost2" id="closeDetailBtn" style="flex:0 0 auto;">Close</button>
-        </div>
-        ${meta}
-        ${practice}
-        <div class="minititle" style="margin-top:16px;">Responses (${(it.answers || []).length})</div>
-        ${answers || `<div class="muted" style="margin-top:8px;">No recordings saved.</div>`}
-      </div>
-    `;
+    ${practice}
+    <section>
+      <h3>Interview Recordings</h3>
+      ${answerHtml || `<p class="muted">No recordings have been uploaded for this submission.</p>`}
+    </section>
+  `;
+  els.emptyState.classList.add("hidden");
+  els.detail.classList.remove("hidden");
+}
 
-    document.getElementById("closeDetailBtn").addEventListener("click", () => {
-      els.detailWrap.innerHTML = "";
+async function selectSubmission(id) {
+  selectedId = id;
+  renderList();
+  els.detail.innerHTML = `<div class="empty-state">Loading submission...</div>`;
+  els.emptyState.classList.add("hidden");
+  els.detail.classList.remove("hidden");
+  const data = await api(`/api/admin/submissions/${encodeURIComponent(id)}`);
+  renderDetail(data.submission);
+}
+
+els.loginForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  els.loginError.textContent = "";
+  try {
+    await api("/api/admin/login", {
+      method: "POST",
+      body: JSON.stringify({ password: els.password.value }),
     });
-  } catch (e) {
-    console.error(e);
-    els.detailWrap.innerHTML = `<div class="card detail"><div class="errline">${escapeHtml(e.message)}</div></div>`;
+    els.password.value = "";
+    showAdmin();
+    await loadSubmissions();
+  } catch (error) {
+    els.loginError.textContent = error.message;
   }
-}
-
-// ---- Filters ----
-els.filters.addEventListener("click", (e) => {
-  const btn = e.target.closest(".filterbtn");
-  if (!btn) return;
-  activeSlug = btn.dataset.slug || "";
-  for (const b of els.filters.querySelectorAll(".filterbtn")) b.classList.toggle("active", b === btn);
-  els.detailWrap.innerHTML = "";
-  loadList();
 });
 
-// ---- Token ----
-els.tokenSaveBtn.addEventListener("click", () => {
-  token = els.tokenInput.value.trim();
-  if (!token) return;
-  localStorage.setItem(TOKEN_KEY, token);
-  els.authError.classList.add("hidden");
-  loadList();
+els.logoutBtn.addEventListener("click", async () => {
+  await api("/api/admin/logout", { method: "POST", body: "{}" }).catch(() => {});
+  selectedId = null;
+  submissions = [];
+  showLogin();
 });
 
-els.tokenInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") els.tokenSaveBtn.click();
+els.refreshBtn.addEventListener("click", () => {
+  loadSubmissions().catch((error) => {
+    els.summary.textContent = error.message;
+  });
 });
 
-els.tokenClearBtn.addEventListener("click", () => {
-  token = "";
-  localStorage.removeItem(TOKEN_KEY);
-  els.tokenInput.value = "";
-  showAuth("Token cleared.");
+els.searchInput.addEventListener("input", () => {
+  clearTimeout(els.searchInput._timer);
+  els.searchInput._timer = setTimeout(() => {
+    loadSubmissions().catch((error) => {
+      els.summary.textContent = error.message;
+    });
+  }, 250);
 });
 
-els.refreshBtn.addEventListener("click", loadList);
+els.list.addEventListener("click", (event) => {
+  const row = event.target.closest("[data-id]");
+  if (row) {
+    selectSubmission(row.dataset.id).catch((error) => {
+      els.detail.innerHTML = `<div class="notice">${escapeHtml(error.message)}</div>`;
+    });
+  }
+});
 
-// ---- Boot ----
-if (token) {
-  loadList();
-} else {
-  showAuth();
-}
-
-refreshTimer = setInterval(() => {
-  if (token && !els.dashCard.classList.contains("hidden")) loadList();
-}, 30000);
+api("/api/admin/session")
+  .then(async (data) => {
+    if (data.authenticated) {
+      showAdmin();
+      await loadSubmissions();
+    } else {
+      showLogin();
+    }
+  })
+  .catch(() => showLogin());

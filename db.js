@@ -45,7 +45,11 @@ function initSchema(db) {
       speed_ping_ms INTEGER,
       speed_download_mbps REAL,
       speed_upload_mbps REAL,
-      speed_rating TEXT
+      speed_rating TEXT,
+      email_status TEXT NOT NULL DEFAULT 'pending',
+      email_error TEXT,
+      email_sent_at TEXT,
+      email_message_id TEXT
     );
 
     CREATE TABLE IF NOT EXISTS interview_answers (
@@ -62,18 +66,22 @@ function initSchema(db) {
   `);
 }
 
-// Add new columns to databases created before the slug/abandon-tracking update
+function ensureColumn(db, table, column, definition) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!columns.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
+// Add columns introduced after the original schema (abandon tracking + email status)
 function migrate(db) {
-  const cols = db.prepare("PRAGMA table_info(interviews)").all().map((c) => c.name);
-  if (!cols.includes("slug")) {
-    db.exec("ALTER TABLE interviews ADD COLUMN slug TEXT NOT NULL DEFAULT 'receptionist'");
-  }
-  if (!cols.includes("current_question")) {
-    db.exec("ALTER TABLE interviews ADD COLUMN current_question INTEGER NOT NULL DEFAULT 0");
-  }
-  if (!cols.includes("last_seen_at")) {
-    db.exec("ALTER TABLE interviews ADD COLUMN last_seen_at TEXT");
-  }
+  ensureColumn(db, "interviews", "slug", "TEXT NOT NULL DEFAULT 'receptionist'");
+  ensureColumn(db, "interviews", "current_question", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "interviews", "last_seen_at", "TEXT");
+  ensureColumn(db, "interviews", "email_status", "TEXT NOT NULL DEFAULT 'pending'");
+  ensureColumn(db, "interviews", "email_error", "TEXT");
+  ensureColumn(db, "interviews", "email_sent_at", "TEXT");
+  ensureColumn(db, "interviews", "email_message_id", "TEXT");
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_interviews_slug ON interviews(slug);
     CREATE INDEX IF NOT EXISTS idx_answers_interview ON interview_answers(interview_id);
@@ -141,6 +149,10 @@ const INTERVIEW_UPDATABLE = new Set([
   "speed_download_mbps",
   "speed_upload_mbps",
   "speed_rating",
+  "email_status",
+  "email_error",
+  "email_sent_at",
+  "email_message_id",
 ]);
 
 export function updateInterview(id, data) {
@@ -193,15 +205,44 @@ export function markStaleInterviewsAbandoned(minutes = 3) {
     .run(`-${minutes} minutes`).changes;
 }
 
-export function listInterviews(slug) {
-  const base = `
-    SELECT i.*,
-      (SELECT COUNT(*) FROM interview_answers a WHERE a.interview_id = i.id) AS answer_count
-    FROM interviews i`;
-  if (slug) {
-    return getDb().prepare(`${base} WHERE i.slug = ? ORDER BY i.created_at DESC`).all(slug);
+export function listInterviews(options = {}) {
+  const { limit = 100, offset = 0, query = "", slug = null } =
+    typeof options === "string" ? { slug: options } : options;
+
+  markStaleInterviewsAbandoned();
+
+  const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
+  const safeOffset = Math.max(Number(offset) || 0, 0);
+  const q = String(query || "").trim();
+  const slugFilter = slug ? String(slug) : null;
+
+  const where = [];
+  const params = { limit: safeLimit, offset: safeOffset };
+  if (q) {
+    where.push(`(i.candidate_name LIKE @like
+      OR i.candidate_email LIKE @like
+      OR i.role LIKE @like
+      OR i.slug LIKE @like
+      OR i.status LIKE @like
+      OR i.email_status LIKE @like)`);
+    params.like = `%${q}%`;
   }
-  return getDb().prepare(`${base} ORDER BY i.created_at DESC`).all();
+  if (slugFilter) {
+    where.push("i.slug = @slug");
+    params.slug = slugFilter;
+  }
+  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+  return getDb()
+    .prepare(`
+      SELECT i.*,
+        (SELECT COUNT(*) FROM interview_answers a WHERE a.interview_id = i.id) AS answer_count
+      FROM interviews i
+      ${whereSql}
+      ORDER BY i.created_at DESC
+      LIMIT @limit OFFSET @offset
+    `)
+    .all(params);
 }
 
 export function getInterviewCounts() {

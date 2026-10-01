@@ -1,140 +1,48 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Azzurro • Interview Admin</title>
-  <link rel="stylesheet" href="./styles.css" />
-  <link rel="icon" type="image/x-icon" href="./favicon.ico" />
-  <style>
-    .adminwrap{ padding: 18px; }
-    .authcard{ max-width: 520px; margin: 40px auto; padding: 22px; }
-    .tablewrap{ overflow-x: auto; margin-top: 12px; }
-    table{ width:100%; border-collapse: collapse; font-size: 13px; }
-    th, td{ text-align:left; padding: 10px 10px; border-bottom: 1px solid rgba(11,27,43,0.08); white-space: nowrap; vertical-align: top; }
-    th{ font-size: 11px; letter-spacing:.06em; text-transform: uppercase; color: rgba(11,27,43,0.52); }
-    tbody tr{ cursor:pointer; }
-    tbody tr:hover{ background: rgba(29,139,255,0.05); }
-    .badgeStatus{
-      display:inline-flex; align-items:center; padding: 4px 9px; border-radius:999px;
-      font-size: 11px; font-weight: 900; letter-spacing:.03em; text-transform: uppercase;
-      border:1px solid rgba(11,27,43,0.12);
-    }
-    .st-submitted{ background:rgba(22,163,74,0.10); color:#166534; border-color:rgba(22,163,74,0.30); }
-    .st-in_progress{ background:rgba(29,139,255,0.10); color:#1d4ed8; border-color:rgba(29,139,255,0.30); }
-    .st-abandoned{ background:rgba(220,38,38,0.08); color:#b91c1c; border-color:rgba(220,38,38,0.28); }
-    .st-uploading{ background:rgba(11,27,43,0.06); color:rgba(11,27,43,0.62); }
-    .st-failed{ background:rgba(220,38,38,0.08); color:#b91c1c; border-color:rgba(220,38,38,0.28); }
-    .filters{ display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
-    .filterbtn{
-      padding: 8px 12px; border-radius:999px; cursor:pointer;
-      border:1px solid rgba(11,27,43,0.12); background:rgba(255,255,255,0.62);
-      color: rgba(11,27,43,0.72); font-weight:800; font-size:12px;
-    }
-    .filterbtn.active{ background: linear-gradient(135deg, rgba(29,139,255,0.90), rgba(47,209,197,0.70)); color:#fff; border-color:rgba(29,139,255,0.25); }
-    .counts{ display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
-    .countchip{ padding: 8px 12px; border-radius:12px; border:1px solid rgba(11,27,43,0.10); background:rgba(255,255,255,0.62); font-size:12px; font-weight:800; color:rgba(11,27,43,0.70); }
-    .detail{ margin-top:16px; padding: 16px; }
-    .metagrid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap:10px; margin-top:12px; }
-    .metaitem{ padding:10px 12px; border-radius:12px; border:1px solid rgba(11,27,43,0.10); background:rgba(255,255,255,0.62); font-size:12px; }
-    .metaitem .k{ display:block; color:rgba(11,27,43,0.52); font-weight:800; margin-bottom:4px; text-transform:uppercase; letter-spacing:.05em; font-size:10px; }
-    .metaitem .v{ color:rgba(11,27,43,0.86); font-weight:700; word-break:break-word; }
-    .answerRow{ padding:12px; border-radius:14px; border:1px solid rgba(11,27,43,0.10); background:rgba(255,255,255,0.62); margin-top:10px; }
-    .answerQ{ font-weight:900; color:rgba(11,27,43,0.88); font-size:13px; line-height:1.4; }
-    .answerFu{ margin-top:4px; color:rgba(11,27,43,0.60); font-size:12px; }
-    .answerRow audio{ width:100%; margin-top:10px; }
-    .answerMeta{ margin-top:6px; color:rgba(11,27,43,0.52); font-size:11px; }
-    .cover{ margin-top:8px; padding:8px 10px; border-radius:10px; background:rgba(29,139,255,0.06); border:1px solid rgba(29,139,255,0.18); color:rgba(11,27,43,0.68); font-size:11px; line-height:1.45; }
-    .cover strong{ color:rgba(11,27,43,0.82); }
-    .muted{ color:rgba(11,27,43,0.55); font-size:12px; }
-    .errline{ color:#b91c1c; font-size:13px; font-weight:800; margin-top:10px; }
-    .toolbar{ display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-top:6px; }
-    .linkbtn{ display:inline-block; margin-top:8px; font-size:12px; font-weight:800; color:#0d6efd; text-decoration:none; }
-  </style>
+  <title>Azzurro Interview Admin</title>
+  <link rel="stylesheet" href="/admin.css" />
 </head>
 <body>
-  <div class="bg">
-    <div class="sun"></div>
-    <div class="wave w1"></div>
-    <div class="wave w2"></div>
-  </div>
-
-  <main class="shell">
+  <main class="admin-shell">
     <header class="topbar">
-      <div class="brand">
-        <div class="mark" aria-hidden="true"><span class="a">A</span></div>
-        <div class="brandtext">
-          <div class="brandname">Azzurro Hotels</div>
-          <div class="brandtag">Interview Admin • Submissions &amp; Abandoned Sessions</div>
-        </div>
+      <div>
+        <div class="eyebrow">Azzurro Hotels</div>
+        <h1>Interview Submissions</h1>
       </div>
-      <div class="statuspill">
-        <span class="dot"></span>
-        <span id="statusText">Ready</span>
-      </div>
+      <button id="logoutBtn" class="ghost hidden" type="button">Sign Out</button>
     </header>
 
-    <!-- AUTH -->
-    <section id="authCard" class="card authcard hidden">
-      <h2>Admin Access</h2>
-      <p class="lead">Enter the admin token. It is printed in the server console unless <code>ADMIN_TOKEN</code> is set in <code>.env</code>.</p>
-      <div class="field">
-        <label for="tokenInput">Admin token</label>
-        <input id="tokenInput" type="password" placeholder="Token" />
-      </div>
-      <div style="margin-top:12px; display:flex; gap:10px;">
-        <button class="primarySmall" id="tokenSaveBtn">Unlock</button>
-        <button class="ghost2" id="tokenClearBtn" style="flex:0 0 auto;">Clear</button>
-      </div>
-      <div class="errline hidden" id="authError"></div>
+    <section id="loginView" class="login-panel hidden">
+      <form id="loginForm" class="login-card">
+        <h2>Admin Login</h2>
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" required />
+        <button type="submit">Log In</button>
+        <p id="loginError" class="error" role="alert"></p>
+      </form>
     </section>
 
-    <!-- DASHBOARD -->
-    <section id="dashCard" class="card hidden">
-      <div class="adminwrap">
+    <section id="adminView" class="layout hidden">
+      <aside class="list-panel">
         <div class="toolbar">
-          <div>
-            <div class="minititle" style="margin:0;">Submissions</div>
-            <div class="muted" id="lastRefreshed">—</div>
-          </div>
-          <button class="primarySmall" id="refreshBtn">Refresh</button>
+          <input id="searchInput" type="search" placeholder="Search submissions" />
+          <button id="refreshBtn" type="button">Refresh</button>
         </div>
+        <div id="summary" class="summary"></div>
+        <div id="submissionList" class="submission-list"></div>
+      </aside>
 
-        <div class="filters" id="filters">
-          <button class="filterbtn active" data-slug="">All</button>
-          <button class="filterbtn" data-slug="operations-dev">Operations (Developer)</button>
-          <button class="filterbtn" data-slug="receptionist">Receptionist</button>
-        </div>
-
-        <div class="counts" id="counts"></div>
-
-        <div class="tablewrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Candidate</th>
-                <th>Track</th>
-                <th>Status</th>
-                <th>Created</th>
-                <th>Last seen</th>
-                <th>Answers</th>
-                <th>Tab switches</th>
-              </tr>
-            </thead>
-            <tbody id="rows"></tbody>
-          </table>
-        </div>
-        <div class="muted" id="emptyState" style="margin-top:12px; display:none;">No submissions yet.</div>
-
-        <div id="detailWrap"></div>
-      </div>
+      <section class="detail-panel">
+        <div id="emptyState" class="empty-state">Select a submission to review recordings.</div>
+        <article id="detailView" class="detail hidden"></article>
+      </section>
     </section>
-
-    <footer class="footer">
-      <span>© Azzurro Hotels • Interview Admin</span>
-    </footer>
   </main>
 
-  <script src="./admin.js"></script>
+  <script src="/admin.js" type="module"></script>
 </body>
 </html>
