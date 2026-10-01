@@ -98,6 +98,7 @@ function renderList() {
           <span class="${statusClass(item.email_status)}">${escapeHtml(item.email_status || "pending")}</span>
         </span>
         <span>${fmtDate(item.created_at)}</span>
+        ${item.answer_count ? `<span>${item.transcribed_count}/${item.answer_count} transcribed${item.avg_score != null ? ` · avg ${item.avg_score}` : ""}</span>` : ""}
         ${["abandoned", "in_progress"].includes(item.status) ? `<span>Last seen ${fmtDate(item.last_seen_at)}</span>` : ""}
       </span>
     </button>
@@ -121,6 +122,11 @@ function stat(label, value) {
   `;
 }
 
+function aiStatusClass(kind, value) {
+  const v = String(value || "pending").toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+  return `status ${kind}-${v}`;
+}
+
 function renderDetail(submission) {
   const answers = submission.answers || [];
   const practice = submission.practice_url ? `
@@ -130,16 +136,59 @@ function renderDetail(submission) {
     </section>
   ` : "";
 
-  const answerHtml = answers.map((answer) => `
-    <section class="answer">
-      <h3>Question ${escapeHtml(answer.question_index)}</h3>
-      <p>${escapeHtml(answer.question_text)}</p>
-      ${answer.followup_text ? `<p class="muted"><strong>Follow-up:</strong> ${escapeHtml(answer.followup_text)}</p>` : ""}
-      ${submission.slug === "operations-dev" && OPS_COVERS[answer.question_index] ? `<p class="cover"><strong>Reviewer note — expected points:</strong> ${escapeHtml(OPS_COVERS[answer.question_index])}</p>` : ""}
-      ${mediaTag(answer.file_url, answer.mime_type)}
-      <a href="${escapeHtml(answer.file_url)}" target="_blank" rel="noopener">Open recording</a>
-    </section>
-  `).join("");
+  const transcribed = answers.filter((a) => a.transcript_status === "done").length;
+  const scored = answers.map((a) => a.grade_score).filter((s) => s !== null && s !== undefined);
+  const avg = scored.length ? Math.round(scored.reduce((a, b) => a + b, 0) / scored.length) : null;
+
+  const answerHtml = answers.map((answer) => {
+    let grade = null;
+    try {
+      grade = answer.grade_json ? JSON.parse(answer.grade_json) : null;
+    } catch {
+      grade = null;
+    }
+
+    const transcriptBlock = answer.transcript
+      ? `<details class="transcript" open><summary>Transcript</summary><p>${escapeHtml(answer.transcript)}</p></details>`
+      : `<p class="muted">Not transcribed yet.${answer.transcript_error ? ` <span class="error-inline">${escapeHtml(answer.transcript_error)}</span>` : ""}</p>`;
+
+    const gradeBlock = grade
+      ? `<div class="grade">
+          <div class="grade-head">
+            <span class="score ${answer.grade_score >= 70 ? "high" : answer.grade_score >= 40 ? "mid" : "low"}">${answer.grade_score ?? "—"}/100</span>
+            <strong>Auto-grade</strong>
+          </div>
+          ${grade.summary ? `<p class="muted">${escapeHtml(grade.summary)}</p>` : ""}
+          <ul class="verdicts">
+            ${(grade.verdicts || []).map((v) => `<li><span class="mark ${v.mark === 1 ? "m1" : v.mark === 0.5 ? "mhalf" : "m0"}">${v.mark ?? 0}</span> ${escapeHtml(v.point || "")} <span class="muted">${escapeHtml(v.note || "")}</span></li>`).join("")}
+          </ul>
+        </div>`
+      : answer.grade_status === "error" && answer.grade_error
+        ? `<div class="notice">Grading error: ${escapeHtml(answer.grade_error)}</div>`
+        : "";
+
+    return `
+      <section class="answer">
+        <div class="answer-head">
+          <h3>Question ${escapeHtml(answer.question_index)}</h3>
+          <span class="badges">
+            <span class="${aiStatusClass("t", answer.transcript_status)}">transcript: ${escapeHtml(answer.transcript_status || "pending")}</span>
+            <span class="${aiStatusClass("g", answer.grade_status)}">grade: ${escapeHtml(answer.grade_status || "pending")}</span>
+          </span>
+        </div>
+        <p>${escapeHtml(answer.question_text)}</p>
+        ${answer.followup_text ? `<p class="muted"><strong>Follow-up:</strong> ${escapeHtml(answer.followup_text)}</p>` : ""}
+        ${submission.slug === "operations-dev" && OPS_COVERS[answer.question_index] ? `<p class="cover"><strong>Reviewer note — expected points:</strong> ${escapeHtml(OPS_COVERS[answer.question_index])}</p>` : ""}
+        ${mediaTag(answer.file_url, answer.mime_type)}
+        <a href="${escapeHtml(answer.file_url)}" target="_blank" rel="noopener">Open recording</a>
+        ${transcriptBlock}
+        ${gradeBlock}
+        <div class="answer-actions">
+          <button class="ghost small" data-retranscribe="${escapeHtml(answer.id)}" type="button">Re-transcribe</button>
+        </div>
+      </section>
+    `;
+  }).join("");
 
   els.detail.innerHTML = `
     <header class="detail-header">
@@ -150,14 +199,20 @@ function renderDetail(submission) {
       <span class="${statusClass(submission.email_status)}">${escapeHtml(submission.email_status || "pending")}</span>
     </header>
 
+    <div class="detail-actions">
+      <button class="ghost small" id="transcribeAllBtn" type="button">Transcribe missing</button>
+      <button class="ghost small" id="forceTranscribeAllBtn" type="button">Force re-transcribe all</button>
+    </div>
+
     <div class="stats">
       ${stat("Submitted", fmtDate(submission.created_at))}
       ${stat("Track", `${submission.role || "—"}${submission.slug ? ` (${submission.slug})` : ""}`)}
       ${stat("Status", submission.status)}
       ${stat("Questions", answers.length)}
+      ${stat("Transcribed", `${transcribed}/${answers.length}`)}
+      ${stat("Avg score", avg !== null ? `${avg}/100` : "—")}
       ${stat("Stopped at", submission.current_question ? `Question ${submission.current_question}` : "—")}
       ${stat("Last seen", fmtDate(submission.last_seen_at))}
-      ${stat("Device", submission.device_hint)}
       ${stat("Tab switches", submission.visibility_hidden_count)}
       ${stat("Speed", submission.speed_rating || "Not tested")}
     </div>
@@ -175,8 +230,30 @@ function renderDetail(submission) {
   els.detail.classList.remove("hidden");
 }
 
+let detailPollTimer = null;
+let detailPollUntil = 0;
+
+function scheduleDetailRefresh() {
+  clearTimeout(detailPollTimer);
+  if (Date.now() > detailPollUntil || !selectedId) return;
+  detailPollTimer = setTimeout(async () => {
+    if (!selectedId) return;
+    try {
+      const data = await api(`/api/admin/submissions/${encodeURIComponent(selectedId)}`);
+      const answers = data.submission.answers || [];
+      if (selectedId) renderDetail(data.submission);
+      const active =
+        answers.some((a) => ["transcribing", "grading"].includes(a.transcript_status) || ["grading"].includes(a.grade_status)) ||
+        (await api("/api/admin/session").then((s) => (s.queue || 0) > 0).catch(() => false));
+      if (active && Date.now() < detailPollUntil) scheduleDetailRefresh();
+    } catch {}
+  }, 5000);
+}
+
 async function selectSubmission(id) {
   selectedId = id;
+  clearTimeout(detailPollTimer);
+  detailPollUntil = 0;
   renderList();
   els.detail.innerHTML = `<div class="empty-state">Loading submission...</div>`;
   els.emptyState.classList.add("hidden");
@@ -229,6 +306,49 @@ els.list.addEventListener("click", (event) => {
     selectSubmission(row.dataset.id).catch((error) => {
       els.detail.innerHTML = `<div class="notice">${escapeHtml(error.message)}</div>`;
     });
+  }
+});
+
+els.detail.addEventListener("click", async (event) => {
+  const retryBtn = event.target.closest("[data-retranscribe]");
+  if (retryBtn) {
+    retryBtn.disabled = true;
+    retryBtn.textContent = "Queued…";
+    try {
+      await api(`/api/admin/answers/${encodeURIComponent(retryBtn.dataset.retranscribe)}/transcribe`, {
+        method: "POST",
+        body: "{}",
+      });
+      detailPollUntil = Date.now() + 180000;
+      scheduleDetailRefresh();
+    } catch (error) {
+      retryBtn.textContent = "Retry failed";
+      retryBtn.title = error.message;
+    }
+    return;
+  }
+
+  const isTranscribeAll = event.target.id === "transcribeAllBtn";
+  const isForce = event.target.id === "forceTranscribeAllBtn";
+  if ((isTranscribeAll || isForce) && selectedId) {
+    if (isForce && !confirm("Re-transcribe and re-grade every answer in this submission?")) return;
+    const btn = event.target;
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Queueing…";
+    try {
+      const data = await api(
+        `/api/admin/submissions/${encodeURIComponent(selectedId)}/transcribe${isForce ? "?force=1" : ""}`,
+        { method: "POST", body: "{}" }
+      );
+      btn.textContent = data.queued ? `Queued ${data.queued}` : "Nothing to do";
+      detailPollUntil = Date.now() + 180000;
+      scheduleDetailRefresh();
+    } catch (error) {
+      btn.textContent = label;
+      btn.disabled = false;
+      alert(error.message);
+    }
   }
 });
 

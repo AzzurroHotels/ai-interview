@@ -97,6 +97,27 @@ router.post("/send-email", async (req, res) => {
         const fu = a.followup_text
           ? `<div style="margin-top:6px;color:#4b5b6a;"><strong>Follow-up:</strong> ${escapeHtml(a.followup_text)}</div>`
           : "";
+
+        const transcript = a.transcript
+          ? `<div style="margin-top:10px;padding:10px 12px;border:1px solid #e6eef5;border-radius:10px;background:#f8fbff;color:#0b1b2b;font-size:13px;line-height:1.5;">
+               <div style="font-weight:900;margin-bottom:4px;">Transcript</div>
+               ${escapeHtml(a.transcript)}
+             </div>`
+          : `<div style="margin-top:10px;color:#4b5b6a;font-size:12px;font-style:italic;">Transcript pending or unavailable.</div>`;
+
+        let grade = null;
+        try {
+          grade = a.grade_json ? JSON.parse(a.grade_json) : null;
+        } catch {
+          grade = null;
+        }
+        const gradeHtml = grade
+          ? `<div style="margin-top:8px;padding:10px 12px;border:1px solid #e6eef5;border-radius:10px;background:#ffffff;color:#0b1b2b;font-size:13px;">
+               <div style="font-weight:900;">Auto-grade: ${a.grade_score ?? "—"}/100</div>
+               ${grade.summary ? `<div style="margin-top:4px;color:#4b5b6a;">${escapeHtml(grade.summary)}</div>` : ""}
+             </div>`
+          : "";
+
         return `
           <div style="padding:12px 14px;border:1px solid #e6eef5;border-radius:12px;margin:10px 0;background:#ffffff;">
             <div style="font-weight:800;color:#0b1b2b;margin-bottom:6px;">Q${a.question_index}: ${q}</div>
@@ -104,6 +125,8 @@ router.post("/send-email", async (req, res) => {
             <div style="margin-top:10px;">
               <a href="${fileUrl}" style="display:inline-block;padding:10px 12px;border-radius:10px;background:linear-gradient(135deg,#1d8bff,#2fd1c5);color:#fff;text-decoration:none;font-weight:900;">Play recording</a>
             </div>
+            ${transcript}
+            ${gradeHtml}
           </div>
         `;
       })

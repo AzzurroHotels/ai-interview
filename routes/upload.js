@@ -9,6 +9,7 @@ import {
   updateAnswer,
   getAnswerByInterviewAndIndex,
 } from "../db.js";
+import { enqueueAnswer } from "../lib/ai.js";
 
 const router = Router();
 
@@ -44,6 +45,7 @@ router.post("/upload", upload.single("file"), (req, res) => {
 
     const relativePath = `interviews/${interviewId}/${filename}`;
 
+    let answerId = null;
     if (type === "practice") {
       updateInterview(interviewId, {
         practice_storage_path: relativePath,
@@ -52,30 +54,47 @@ router.post("/upload", upload.single("file"), (req, res) => {
       });
     } else {
       const idx = Number(questionIndex) || 0;
+      const qid = (questionId || "").trim() || null;
       const existing = getAnswerByInterviewAndIndex(interviewId, idx);
       if (existing) {
         // Retry after a failed upload — replace the file reference instead of duplicating
         updateAnswer(existing.id, {
+          question_id: qid || existing.question_id,
           question_text: questionText || existing.question_text,
           followup_text: followupText || existing.followup_text,
           storage_path: relativePath,
           mime_type: mimeType,
           duration_seconds: Number(durationSeconds) || 0,
+          transcript: null,
+          transcript_status: "pending",
+          transcript_error: null,
+          transcribed_at: null,
+          grade_json: null,
+          grade_score: null,
+          grade_status: "pending",
+          grade_error: null,
+          graded_at: null,
         });
+        answerId = existing.id;
       } else {
-        createAnswer({
+        const created = createAnswer({
           interview_id: interviewId,
           question_index: idx,
+          question_id: qid,
           question_text: questionText || "",
           followup_text: followupText || "",
           storage_path: relativePath,
           mime_type: mimeType,
           duration_seconds: Number(durationSeconds) || 0,
         });
+        answerId = created.id;
       }
     }
 
     res.json({ ok: true, path: relativePath });
+
+    // Transcribe + auto-grade in the background (serial queue, never blocks the upload)
+    if (answerId) enqueueAnswer(answerId);
   } catch (e) {
     // Clean up temp file on error
     if (req.file) {

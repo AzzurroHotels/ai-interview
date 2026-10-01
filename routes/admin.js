@@ -1,6 +1,13 @@
 import { Router } from "express";
 import crypto from "crypto";
-import { getAnswersByInterviewId, getInterviewById, listInterviews } from "../db.js";
+import {
+  getAnswersByInterviewId,
+  getAnswerById,
+  getInterviewById,
+  listInterviews,
+  updateAnswer,
+} from "../db.js";
+import { enqueueAnswer, aiConfigured, queueSize } from "../lib/ai.js";
 
 const router = Router();
 const COOKIE_NAME = "azzurro_admin";
@@ -77,7 +84,12 @@ function publicInterview(interview, req) {
 }
 
 router.get("/session", (req, res) => {
-  res.json({ authenticated: isValidSession(req), configured: Boolean(getAdminPassword()) });
+  res.json({
+    authenticated: isValidSession(req),
+    configured: Boolean(getAdminPassword()),
+    ai: aiConfigured(),
+    queue: queueSize(),
+  });
 });
 
 router.post("/login", (req, res) => {
@@ -131,6 +143,64 @@ router.get("/submissions/:id", requireAdmin, (req, res) => {
   }));
 
   res.json({ submission: { ...publicInterview(interview, req), answers } });
+});
+
+// Queue transcription + grading for every answer missing it (or force redo all)
+router.post("/submissions/:id/transcribe", requireAdmin, (req, res) => {
+  const interview = getInterviewById(req.params.id);
+  if (!interview) {
+    return res.status(404).json({ error: "Submission not found" });
+  }
+
+  const force = req.query.force === "1";
+  const answers = getAnswersByInterviewId(req.params.id);
+  let queued = 0;
+
+  for (const a of answers) {
+    const needsWork = force || a.transcript_status !== "done" || a.grade_status === "error";
+    if (!needsWork) continue;
+    if (force) {
+      updateAnswer(a.id, {
+        transcript: null,
+        transcript_status: "pending",
+        transcript_error: null,
+        transcribed_at: null,
+        grade_json: null,
+        grade_score: null,
+        grade_status: "pending",
+        grade_error: null,
+        graded_at: null,
+      });
+    }
+    enqueueAnswer(a.id);
+    queued += 1;
+  }
+
+  res.json({ ok: true, queued, total: answers.length });
+});
+
+// Re-run transcription + grading for a single answer
+router.post("/answers/:id/transcribe", requireAdmin, (req, res) => {
+  const answer = getAnswerById(req.params.id);
+  if (!answer) {
+    return res.status(404).json({ error: "Answer not found" });
+  }
+
+  if (req.query.force === "1") {
+    updateAnswer(answer.id, {
+      transcript: null,
+      transcript_status: "pending",
+      transcript_error: null,
+      transcribed_at: null,
+      grade_json: null,
+      grade_score: null,
+      grade_status: "pending",
+      grade_error: null,
+      graded_at: null,
+    });
+  }
+  enqueueAnswer(answer.id);
+  res.json({ ok: true, queued: 1 });
 });
 
 export default router;

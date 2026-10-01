@@ -57,11 +57,21 @@ function initSchema(db) {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       interview_id TEXT NOT NULL REFERENCES interviews(id) ON DELETE CASCADE,
       question_index INTEGER NOT NULL,
+      question_id TEXT,
       question_text TEXT NOT NULL,
       followup_text TEXT,
       storage_path TEXT NOT NULL,
       mime_type TEXT,
-      duration_seconds INTEGER
+      duration_seconds INTEGER,
+      transcript TEXT,
+      transcript_status TEXT NOT NULL DEFAULT 'pending',
+      transcript_error TEXT,
+      transcribed_at TEXT,
+      grade_json TEXT,
+      grade_score INTEGER,
+      grade_status TEXT NOT NULL DEFAULT 'pending',
+      grade_error TEXT,
+      graded_at TEXT
     );
   `);
 }
@@ -82,6 +92,17 @@ function migrate(db) {
   ensureColumn(db, "interviews", "email_error", "TEXT");
   ensureColumn(db, "interviews", "email_sent_at", "TEXT");
   ensureColumn(db, "interviews", "email_message_id", "TEXT");
+  // Transcription + auto-grading
+  ensureColumn(db, "interview_answers", "question_id", "TEXT");
+  ensureColumn(db, "interview_answers", "transcript", "TEXT");
+  ensureColumn(db, "interview_answers", "transcript_status", "TEXT NOT NULL DEFAULT 'pending'");
+  ensureColumn(db, "interview_answers", "transcript_error", "TEXT");
+  ensureColumn(db, "interview_answers", "transcribed_at", "TEXT");
+  ensureColumn(db, "interview_answers", "grade_json", "TEXT");
+  ensureColumn(db, "interview_answers", "grade_score", "INTEGER");
+  ensureColumn(db, "interview_answers", "grade_status", "TEXT NOT NULL DEFAULT 'pending'");
+  ensureColumn(db, "interview_answers", "grade_error", "TEXT");
+  ensureColumn(db, "interview_answers", "graded_at", "TEXT");
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_interviews_slug ON interviews(slug);
     CREATE INDEX IF NOT EXISTS idx_answers_interview ON interview_answers(interview_id);
@@ -236,7 +257,9 @@ export function listInterviews(options = {}) {
   return getDb()
     .prepare(`
       SELECT i.*,
-        (SELECT COUNT(*) FROM interview_answers a WHERE a.interview_id = i.id) AS answer_count
+        (SELECT COUNT(*) FROM interview_answers a WHERE a.interview_id = i.id) AS answer_count,
+        (SELECT COUNT(*) FROM interview_answers a WHERE a.interview_id = i.id AND a.transcript_status = 'done') AS transcribed_count,
+        (SELECT ROUND(AVG(a.grade_score)) FROM interview_answers a WHERE a.interview_id = i.id AND a.grade_score IS NOT NULL) AS avg_score
       FROM interviews i
       ${whereSql}
       ORDER BY i.created_at DESC
@@ -255,15 +278,16 @@ export function getInterviewCounts() {
 
 const insertAnswerStmt = () =>
   getDb().prepare(`
-    INSERT INTO interview_answers (id, interview_id, question_index, question_text,
+    INSERT INTO interview_answers (id, interview_id, question_index, question_id, question_text,
       followup_text, storage_path, mime_type, duration_seconds)
-    VALUES (@id, @interview_id, @question_index, @question_text,
+    VALUES (@id, @interview_id, @question_index, @question_id, @question_text,
       @followup_text, @storage_path, @mime_type, @duration_seconds)
   `);
 
 export function createAnswer(data) {
   const id = randomUUID();
   insertAnswerStmt().run({
+    question_id: null,
     question_text: "",
     followup_text: null,
     storage_path: "",
@@ -292,11 +316,21 @@ export function getAnswersByInterviewId(interviewId) {
 }
 
 const ANSWER_UPDATABLE = new Set([
+  "question_id",
   "question_text",
   "followup_text",
   "storage_path",
   "mime_type",
   "duration_seconds",
+  "transcript",
+  "transcript_status",
+  "transcript_error",
+  "transcribed_at",
+  "grade_json",
+  "grade_score",
+  "grade_status",
+  "grade_error",
+  "graded_at",
 ]);
 
 export function updateAnswer(id, data) {

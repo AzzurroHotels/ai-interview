@@ -302,6 +302,160 @@ h1 {
   font-size: 13px;
 }
 
+.ghost.small {
+  min-height: 34px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.answer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.status.t-done,
+.status.g-graded {
+  color: var(--success);
+  background: #e7f6ef;
+}
+
+.status.t-error,
+.status.g-error {
+  color: var(--danger);
+  background: #fdecec;
+}
+
+.status.t-pending,
+.status.t-transcribing,
+.status.g-pending,
+.status.g-grading,
+.status.g-skipped {
+  color: var(--warning);
+  background: #fff4df;
+}
+
+.transcript {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font-size: 13px;
+}
+
+.transcript summary {
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.transcript p {
+  margin-top: 8px;
+  color: var(--ink);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.grade {
+  margin-top: 10px;
+  padding: 12px;
+  background: #fbfdff;
+  border: 1px solid #d5e4f8;
+  border-radius: 7px;
+  font-size: 13px;
+}
+
+.grade-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.score {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-weight: 800;
+  color: #44546a;
+  background: #eef2f6;
+}
+
+.score.high {
+  color: var(--success);
+  background: #e7f6ef;
+}
+
+.score.mid {
+  color: var(--warning);
+  background: #fff4df;
+}
+
+.score.low {
+  color: var(--danger);
+  background: #fdecec;
+}
+
+.verdicts {
+  margin: 8px 0 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.verdicts li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 0;
+  border-top: 1px solid #eef2f6;
+  line-height: 1.4;
+}
+
+.mark {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  min-height: 22px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.mark.m1 {
+  color: var(--success);
+  background: #e7f6ef;
+}
+
+.mark.mhalf {
+  color: var(--warning);
+  background: #fff4df;
+}
+
+.mark.m0 {
+  color: var(--danger);
+  background: #fdecec;
+}
+
+.answer-actions {
+  margin-top: 10px;
+}
+
+.error-inline {
+  color: var(--danger);
+}
+
 .detail-panel {
   padding: 18px;
 }
