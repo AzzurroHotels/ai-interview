@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Azzurro Interview Admin</title>
+  <link rel="stylesheet" href="/admin.css" />
+</head>
+<body>
+  <main class="admin-shell">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">Azzurro Hotels</div>
+        <h1>Interview Submissions</h1>
+      </div>
+      <button id="logoutBtn" class="ghost hidden" type="button">Sign Out</button>
+    </header>
+
+    <section id="loginView" class="login-panel hidden">
+      <form id="loginForm" class="login-card">
+        <h2>Admin Login</h2>
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" required />
+        <button type="submit">Log In</button>
+        <p id="loginError" class="error" role="alert"></p>
+      </form>
+    </section>
+
+    <section id="adminView" class="layout hidden">
+      <aside class="list-panel">
+        <div class="toolbar">
+          <input id="searchInput" type="search" placeholder="Search submissions" />
+          <button id="refreshBtn" type="button">Refresh</button>
+        </div>
+        <div id="summary" class="summary"></div>
+        <div id="submissionList" class="submission-list"></div>
+      </aside>
+
+      <section class="detail-panel">
+        <div id="emptyState" class="empty-state">Select a submission to review recordings.</div>
+        <article id="detailView" class="detail hidden"></article>
+      </section>
+    </section>
+  </main>
+
+  <script src="/admin.js" type="module"></script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getInterviewById, getAnswersByInterviewId } from "../db.js";
+import { getInterviewById, getAnswersByInterviewId, updateInterview } from "../db.js";
 
 const router = Router();
 
@@ -25,6 +25,12 @@ router.post("/send-email", async (req, res) => {
 
     if (!RESEND_API_KEY || RESEND_API_KEY === "re_xxxxx") {
       console.warn("RESEND_API_KEY not configured — skipping email send");
+      updateInterview(interview_id, {
+        email_status: "skipped",
+        email_error: "RESEND_API_KEY not configured",
+        email_sent_at: null,
+        email_message_id: null,
+      });
       return res.json({ ok: true, skipped: true, reason: "RESEND_API_KEY not configured" });
     }
 
@@ -34,6 +40,13 @@ router.post("/send-email", async (req, res) => {
     }
 
     const answers = getAnswersByInterviewId(interview_id);
+    updateInterview(interview_id, {
+      email_status: "sending",
+      email_error: null,
+      email_sent_at: null,
+      email_message_id: null,
+    });
+
     const host = req.get("host");
     const proto = req.protocol;
     const base = `${proto}://${host}`;
@@ -139,13 +152,35 @@ router.post("/send-email", async (req, res) => {
     if (!result.ok) {
       const text = await result.text();
       console.error("Resend API error:", result.status, text);
+      updateInterview(interview_id, {
+        email_status: "failed",
+        email_error: `Resend API error: ${result.status} ${text}`.slice(0, 1000),
+        email_sent_at: null,
+        email_message_id: null,
+      });
       return res.json({ ok: true, skipped: true, reason: `Resend API error: ${result.status}` });
     }
 
     const data = await result.json();
+    updateInterview(interview_id, {
+      email_status: "sent",
+      email_error: null,
+      email_sent_at: new Date().toISOString(),
+      email_message_id: data.id || null,
+    });
     res.json({ ok: true, result: data });
   } catch (e) {
     console.error("Send email error:", e);
+    if (req.body?.interview_id) {
+      try {
+        updateInterview(req.body.interview_id, {
+          email_status: "failed",
+          email_error: e.message,
+          email_sent_at: null,
+          email_message_id: null,
+        });
+      } catch {}
+    }
     res.json({ ok: true, skipped: true, reason: e.message });
   }
 });

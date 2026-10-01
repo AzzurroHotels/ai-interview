@@ -38,7 +38,11 @@ function initSchema(db) {
       speed_ping_ms INTEGER,
       speed_download_mbps REAL,
       speed_upload_mbps REAL,
-      speed_rating TEXT
+      speed_rating TEXT,
+      email_status TEXT NOT NULL DEFAULT 'pending',
+      email_error TEXT,
+      email_sent_at TEXT,
+      email_message_id TEXT
     );
 
     CREATE TABLE IF NOT EXISTS interview_answers (
@@ -53,6 +57,18 @@ function initSchema(db) {
       duration_seconds INTEGER
     );
   `);
+
+  ensureColumn(db, "interviews", "email_status", "TEXT NOT NULL DEFAULT 'pending'");
+  ensureColumn(db, "interviews", "email_error", "TEXT");
+  ensureColumn(db, "interviews", "email_sent_at", "TEXT");
+  ensureColumn(db, "interviews", "email_message_id", "TEXT");
+}
+
+function ensureColumn(db, table, column, definition) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!columns.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
 }
 
 // ---- Interview helpers ----
@@ -75,6 +91,40 @@ export function createInterview(data) {
 
 export function getInterviewById(id) {
   return getDb().prepare("SELECT * FROM interviews WHERE id = ?").get(id);
+}
+
+export function listInterviews({ limit = 100, offset = 0, query = "" } = {}) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
+  const safeOffset = Math.max(Number(offset) || 0, 0);
+  const q = String(query || "").trim();
+
+  if (q) {
+    const like = `%${q}%`;
+    return getDb()
+      .prepare(`
+        SELECT i.*,
+          (SELECT COUNT(*) FROM interview_answers a WHERE a.interview_id = i.id) AS answer_count
+        FROM interviews i
+        WHERE i.candidate_name LIKE @like
+          OR i.candidate_email LIKE @like
+          OR i.role LIKE @like
+          OR i.status LIKE @like
+          OR i.email_status LIKE @like
+        ORDER BY i.created_at DESC
+        LIMIT @limit OFFSET @offset
+      `)
+      .all({ like, limit: safeLimit, offset: safeOffset });
+  }
+
+  return getDb()
+    .prepare(`
+      SELECT i.*,
+        (SELECT COUNT(*) FROM interview_answers a WHERE a.interview_id = i.id) AS answer_count
+      FROM interviews i
+      ORDER BY i.created_at DESC
+      LIMIT @limit OFFSET @offset
+    `)
+    .all({ limit: safeLimit, offset: safeOffset });
 }
 
 export function updateInterview(id, data) {
